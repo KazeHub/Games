@@ -1155,16 +1155,15 @@ local function getExactPrompt(obj)
 end
 
 DetectiveTab:Button({
-    Title = "Auto Deliver Evidence",
+    Title = "Collect Evidence",
     Callback = function()
         task.spawn(function()
             local char = LocalPlayer.Character
             if not char then return end
             
             local evidenceFolder = workspace:FindFirstChild("Data") and workspace.Data:FindFirstChild("Detective") and workspace.Data.Detective:FindFirstChild("Evidence") and workspace.Data.Detective.Evidence:FindFirstChild("Instances")
-            local rearPart = workspace:FindFirstChild("Data") and workspace.Data:FindFirstChild("Detective") and workspace.Data.Detective:FindFirstChild("Boat") and workspace.Data.Detective.Boat:FindFirstChild("Speedy Bowrider") and workspace.Data.Detective.Boat["Speedy Bowrider"]:FindFirstChild("RearPart")
             
-            if evidenceFolder and rearPart then
+            if evidenceFolder then
                 local evidenceList = evidenceFolder:GetChildren()
                 
                 if #evidenceList > 0 then
@@ -1194,21 +1193,33 @@ DetectiveTab:Button({
                             end
                         end
                     end
-                    
-                    if char and char.Parent then
-                        char:PivotTo(rearPart.CFrame + Vector3.new(0, 3, 0))
-                        task.wait(0.3)
-                        
-                        local boatPrompt = getExactPrompt(rearPart)
-                        if boatPrompt and boatPrompt.Enabled then
-                            pcall(function()
-                                if fireproximityprompt then fireproximityprompt(boatPrompt)
-                                else boatPrompt:InputHoldBegin(); task.wait(boatPrompt.HoldDuration + 0.05); boatPrompt:InputHoldEnd() end
-                            end)
-                        end
-                        task.wait(0.5)
-                    end
                 end
+            end
+        end)
+    end
+})
+
+DetectiveTab:Button({
+    Title = "Deposit Evidence",
+    Callback = function()
+        task.spawn(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+            
+            local rearPart = workspace:FindFirstChild("Data") and workspace.Data:FindFirstChild("Detective") and workspace.Data.Detective:FindFirstChild("Boat") and workspace.Data.Detective.Boat:FindFirstChild("Speedy Bowrider") and workspace.Data.Detective.Boat["Speedy Bowrider"]:FindFirstChild("RearPart")
+            
+            if rearPart then
+                char:PivotTo(rearPart.CFrame + Vector3.new(0, 3, 0))
+                task.wait(0.3)
+                
+                local boatPrompt = getExactPrompt(rearPart)
+                if boatPrompt and boatPrompt.Enabled then
+                    pcall(function()
+                        if fireproximityprompt then fireproximityprompt(boatPrompt)
+                        else boatPrompt:InputHoldBegin(); task.wait(boatPrompt.HoldDuration + 0.05); boatPrompt:InputHoldEnd() end
+                    end)
+                end
+                task.wait(0.5)
             end
         end)
     end
