@@ -277,6 +277,8 @@ Main:Toggle({
 
 local jumpBoostEnabled = false
 local jumpPowerValue = 50
+local infJumpEnabled = false
+local infJumpConn = nil
 
 local function updateJumpPower()
     local char = LocalPlayer.Character
@@ -318,23 +320,26 @@ Main:Toggle({
     end
 })
 
-local infJumpEnabled = false
-
-UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-    end
-end)
-
 Main:Toggle({
     Title = "Infinite Jump",
     Default = false,
     Callback = function(state)
         infJumpEnabled = state
+        
+        if infJumpConn then
+            infJumpConn:Disconnect()
+            infJumpConn = nil
+        end
+
+        if infJumpEnabled then
+            infJumpConn = UserInputService.JumpRequest:Connect(function()
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        end
     end
 })
 
