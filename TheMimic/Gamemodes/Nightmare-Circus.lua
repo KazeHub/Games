@@ -798,71 +798,179 @@ Ronnie:Button({
     end
 })
 
+local _l = game:GetService("Players").LocalPlayer
+local _w = workspace
+local _rs = game:GetService("ReplicatedStorage")
+local _cam = workspace.CurrentCamera
+local runSvc = game:GetService("RunService")
+local safePos = Vector3.new(-136, 15, 248)
+local dangerRange = 25
+local running = true
+local leapTriggered = false
+local evading = false
+
+local Event = _rs:WaitForChild("modules"):WaitForChild("Packet"):WaitForChild("Reliable")
+
+Event.OnClientEvent:Connect(function(arg1, ...)
+	if arg1 == "Bruno/LeapWarning" then
+		leapTriggered = true
+	end
+end)
+
+local function getHrp()
+	local char = _l.Character
+	return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function checkMonsterNear()
+	local hrp = getHrp()
+	if not hrp then return nil end
+
+	if leapTriggered then
+		return hrp.Position + Vector3.new(1, 0, 0)
+	end
+
+	local s1 = _w:FindFirstChild("Section1")
+	local monsterFolder = s1 and s1:FindFirstChild("Monster")
+	if not monsterFolder then return nil end
+
+	for _, name in ipairs({"Ronnie", "Bruno"}) do
+		local m = monsterFolder:FindFirstChild(name)
+		if m then
+			local mPos = m:IsA("Model") and m:GetPivot().Position or (m:IsA("BasePart") and m.Position)
+			if mPos and (mPos - hrp.Position).Magnitude <= dangerRange then
+				return mPos
+			end
+		end
+	end
+	return nil
+end
+
+local function evade(monsterPos)
+	if evading then return end
+	evading = true
+	running = false
+	leapTriggered = false
+
+	local hrp = getHrp()
+	if not hrp then
+		evading = false
+		running = true
+		return
+	end
+
+	pcall(function()
+		Event:FireServer("Section1/HighStrikerLeave")
+	end)
+	task.wait(0.1)
+
+	hrp = getHrp()
+	if hrp then
+		local dir = hrp.Position - monsterPos
+		dir = Vector3.new(dir.X, 0, dir.Z)
+		if dir.Magnitude < 0.1 then
+			dir = Vector3.new(1, 0, 0)
+		else
+			dir = dir.Unit
+		end
+
+		local evadePos = safePos + (dir * 15)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = CFrame.new(evadePos)
+	end
+
+	task.wait(1)
+	leapTriggered = false
+	evading = false
+	running = true
+end
+
+runSvc.Heartbeat:Connect(function()
+	if not running or evading then return end
+	local mPos = checkMonsterNear()
+	if mPos then
+		task.spawn(evade, mPos)
+	end
+end)
+
 Ronnie:Button({
-    Title = "Auto High Striker",
-    Callback = function()
-        local char = _l.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+	Title = "Auto High Striker",
+	Callback = function()
+		task.spawn(function()
+			local hrp = getHrp()
+			if not hrp then return end
 
-        task.spawn(function()
-            local safePos = Vector3.new(-136, 15, 248)
+			running = true
+			leapTriggered = false
 
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-            hrp.CFrame = CFrame.new(-32, 32, 39)
-            task.wait(0.5)
+			hrp.AssemblyLinearVelocity = Vector3.zero
+			hrp.AssemblyAngularVelocity = Vector3.zero
+			hrp.CFrame = CFrame.new(-32, 32, 39)
+			task.wait(0.5)
+			if not running then return end
 
-            local games = _w:FindFirstChild("Section1") and _w.Section1:FindFirstChild("Games")
-            local highStriker = games and games:FindFirstChild("High Striker")
-            local proxPart = highStriker and highStriker:FindFirstChild("ProxPart")
-            local prompt = proxPart and proxPart:FindFirstChildWhichIsA("ProximityPrompt", true)
+			local games = _w:FindFirstChild("Section1") and _w.Section1:FindFirstChild("Games")
+			local highStriker = games and games:FindFirstChild("High Striker")
+			local proxPart = highStriker and highStriker:FindFirstChild("ProxPart")
+			local prompt = proxPart and proxPart:FindFirstChildWhichIsA("ProximityPrompt", true)
 
-            if prompt and proxPart then
-                local maxDist = prompt.MaxActivationDistance
-                local originalCamType = _cam.CameraType
-                local originalCamCFrame = _cam.CFrame
+			if prompt and proxPart then
+				local maxDist = prompt.MaxActivationDistance
+				local originalCamType = _cam.CameraType
+				local originalCamCFrame = _cam.CFrame
 
-                prompt.MaxActivationDistance = 250
-                prompt.RequiresLineOfSight = false
+				prompt.MaxActivationDistance = 250
+				prompt.RequiresLineOfSight = false
 
-                _cam.CameraType = Enum.CameraType.Scriptable
-                _cam.CFrame = CFrame.new(_cam.CFrame.Position, proxPart.Position)
+				_cam.CameraType = Enum.CameraType.Scriptable
+				_cam.CFrame = CFrame.new(_cam.CFrame.Position, proxPart.Position)
 
-                hrp.AssemblyLinearVelocity = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                hrp.CFrame = CFrame.new(proxPart.Position)
-                task.wait(0.3)
+				hrp = getHrp()
+				if hrp and running then
+					hrp.AssemblyLinearVelocity = Vector3.zero
+					hrp.AssemblyAngularVelocity = Vector3.zero
+					hrp.CFrame = CFrame.new(proxPart.Position)
+					task.wait(0.3)
+				end
 
-                pcall(function() prompt:InputHoldBegin() end)
-                task.wait(prompt.HoldDuration + 0.1)
-                pcall(function() prompt:InputHoldEnd() end)
+				if running then
+					pcall(function() prompt:InputHoldBegin() end)
+					task.wait(prompt.HoldDuration + 0.1)
+					pcall(function() prompt:InputHoldEnd() end)
+				end
 
-                _cam.CameraType = originalCamType
-                _cam.CFrame = originalCamCFrame
-                prompt.MaxActivationDistance = maxDist
-            end
+				_cam.CameraType = originalCamType
+				_cam.CFrame = originalCamCFrame
+				prompt.MaxActivationDistance = maxDist
+			end
 
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-            hrp.CFrame = CFrame.new(safePos)
-            task.wait(0.5)
+			if not running then return end
 
-            local Event = _rs:WaitForChild("modules"):WaitForChild("Packet"):WaitForChild("Reliable")
+			hrp = getHrp()
+			if hrp then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				hrp.AssemblyAngularVelocity = Vector3.zero
+				hrp.CFrame = CFrame.new(safePos)
+			end
+			task.wait(0.5)
 
-            for i = 1, 5 do
-                for j = 1, 50 do
-                    pcall(function()
-                        Event:FireServer("Section1/HighStrikerClick")
-                    end)
-                    task.wait(0.016)
-                end
-                task.wait(5)
-            end
-        end)
-    end
+			for _ = 1, 5 do
+				if not running then break end
+				for _ = 1, 50 do
+					if not running then break end
+					pcall(function()
+						Event:FireServer("Section1/HighStrikerClick")
+					end)
+					task.wait(0.016)
+				end
+				if not running then break end
+				task.wait(5)
+			end
+		end)
+	end
 })
+
 
 Ronnie:Button({
     Title = "Auto Pop Balloon",
