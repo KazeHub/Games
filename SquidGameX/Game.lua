@@ -275,72 +275,64 @@ Main:Toggle({
     end
 })
 
+local jumpBoostValue = 50
 local jumpBoostEnabled = false
-local jumpPowerValue = 50
 local infJumpEnabled = false
-local infJumpConn = nil
+local jumpConn = nil
 
-local function updateJumpPower()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.UseJumpPower = true
-        if jumpBoostEnabled then
-            hum.JumpPower = jumpPowerValue
-        else
-            hum.JumpPower = 50
-        end
-    end
+local function applyJumpBoost()
+	pcall(function()
+		local char = game:GetService("Players").LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.UseJumpPower = true
+			hum.JumpPower = jumpBoostEnabled and jumpBoostValue or 50
+		end
+	end)
 end
 
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    updateJumpPower()
-end)
-
 Main:Slider({
-    Title = "Jump Power",
-    Min = 50,
-    Max = 100,
-    Default = 50,
-    Callback = function(val)
-        jumpPowerValue = val
-        if jumpBoostEnabled then
-            updateJumpPower()
-        end
-    end
+	Title = "Jump Boost",
+	Min = 50,
+	Max = 300,
+	Default = 50,
+	Callback = function(v)
+		jumpBoostValue = v
+		if jumpBoostEnabled then
+			applyJumpBoost()
+		end
+	end
 })
 
 Main:Toggle({
-    Title = "Jump Boost",
-    Default = false,
-    Callback = function(state)
-        jumpBoostEnabled = state
-        updateJumpPower()
-    end
+	Title = "Jump Boost",
+	Default = false,
+	Callback = function(state)
+		jumpBoostEnabled = state
+		applyJumpBoost()
+	end
 })
 
 Main:Toggle({
-    Title = "Infinite Jump",
-    Default = false,
-    Callback = function(state)
-        infJumpEnabled = state
-        
-        if infJumpConn then
-            infJumpConn:Disconnect()
-            infJumpConn = nil
-        end
-
-        if infJumpEnabled then
-            infJumpConn = UserInputService.JumpRequest:Connect(function()
-                local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-            end)
-        end
-    end
+	Title = "Infinite Jump",
+	Default = false,
+	Callback = function(state)
+		infJumpEnabled = state
+		if jumpConn then
+			jumpConn:Disconnect()
+			jumpConn = nil
+		end
+		if infJumpEnabled then
+			jumpConn = game:GetService("UserInputService").JumpRequest:Connect(function()
+				if not infJumpEnabled then return end
+				local char = game:GetService("Players").LocalPlayer.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					hum:ChangeState(Enum.HumanoidStateType.Jumping)
+				end
+			end)
+		end
+	end
 })
 
 Main:Keybind({
@@ -416,48 +408,28 @@ GameMain:Toggle({
             if not autoPickupEnabled or pickupDebounce then return end
             
             local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+            if not char then return end
 
-            -- Check if we already have a baby in our character
             if char:FindFirstChild("Baby", true) then return end
 
             for _, model in ipairs(Workspace:GetChildren()) do
                 if model.Name == "BabyPickup" then
                     local prompt = model:FindFirstChild("PickupPrompt", true)
-                    if prompt and prompt.Enabled and prompt.Parent and prompt.Parent:IsA("BasePart") then
-                        
+                    if prompt and prompt.Enabled then
                         pickupDebounce = true
-                        task.spawn(function()
-                            local originalCFrame = hrp.CFrame
-                            
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                            hrp.AssemblyAngularVelocity = Vector3.zero
-                            hrp.CFrame = prompt.Parent.CFrame
-                            
-                            task.wait(0.15)
-                            
-                            pcall(function()
-                                if fireproximityprompt then
-                                    fireproximityprompt(prompt)
-                                else
-                                    prompt:InputHoldBegin()
-                                    task.wait(prompt.HoldDuration + 0.05)
-                                    prompt:InputHoldEnd()
-                                end
-                            end)
-                            
-                            task.wait(0.2)
-                            
-                            if hrp and hrp.Parent then
-                                hrp.AssemblyLinearVelocity = Vector3.zero
-                                hrp.AssemblyAngularVelocity = Vector3.zero
-                                hrp.CFrame = originalCFrame
+                        
+                        pcall(function()
+                            if fireproximityprompt then
+                                fireproximityprompt(prompt)
+                            else
+                                prompt:InputHoldBegin()
+                                task.wait(prompt.HoldDuration + 0.05)
+                                prompt:InputHoldEnd()
                             end
-                            
-                            task.wait(1)
-                            pickupDebounce = false
                         end)
+                        
+                        task.wait(1)
+                        pickupDebounce = false
                         break
                     end
                 end
@@ -465,7 +437,6 @@ GameMain:Toggle({
         end)
     end
 })
-
 
 local CombatTab = Window:CreateTab({ Title = "Combat", Icon = "crosshair" })
 local CombatWeapons = CombatTab:CreateSubTab({ Title = "Weapons", Icon = "sword", Default = true })
@@ -813,54 +784,142 @@ end)
 local ESPTab = Window:CreateTab({ Title = "ESP", Icon = "eye" })
 local ESPMain = ESPTab:CreateSubTab({ Title = "Main", Icon = "users", Default = true })
 
-local ESPConfig = ESPConfig or { Player = false, Guard = false, Frontman = false, BabyCarrier = false, Glassmaker = false, Detective = false }
+local ESPConfig = { Player = false, Guard = false, Detective = false, Frontman = false, BabyCarrier = false, Glassmaker = false }
+
+local ESPColors = {
+    Player = Color3.fromRGB(255, 255, 255),
+    Guard = Color3.fromRGB(255, 105, 180),
+    Detective = Color3.fromRGB(255, 215, 0),
+    Frontman = Color3.fromRGB(255, 0, 255),
+    BabyCarrier = Color3.fromRGB(255, 215, 0),
+    Glassmaker = Color3.fromRGB(255, 215, 0)
+}
+
+local ESPMode = "Original"
+
 local activeHighlights = setmetatable({}, {__mode = "k"})
 local activeBillboards = setmetatable({}, {__mode = "k"})
+local updateAccumulator = 0
+
+local function clearAllESP()
+    for char, hls in pairs(activeHighlights) do
+        for espType, hl in pairs(hls) do
+            hl:Destroy()
+        end
+    end
+    for char, bbs in pairs(activeBillboards) do
+        for espType, bb in pairs(bbs) do
+            bb:Destroy()
+        end
+    end
+    table.clear(activeHighlights)
+    table.clear(activeBillboards)
+end
 
 local function clearESPType(espType)
-    if not ESPConfig[espType] then
-        for char, hls in pairs(activeHighlights) do
-            if hls[espType] then hls[espType]:Destroy() hls[espType] = nil end
+    for char, hls in pairs(activeHighlights) do
+        if hls[espType] then
+            hls[espType]:Destroy()
+            hls[espType] = nil
         end
-        for char, bbs in pairs(activeBillboards) do
-            if bbs[espType] then bbs[espType]:Destroy() bbs[espType] = nil end
+    end
+    for char, bbs in pairs(activeBillboards) do
+        if bbs[espType] then
+            bbs[espType]:Destroy()
+            bbs[espType] = nil
         end
     end
 end
 
+local ESPConfigSection = ESPMain:SectionUI({ Title = "ESP Settings", Open = true })
+
+ESPConfigSection:Dropdown({
+    Title = "ESP Mode",
+    Default = "Original",
+    Options = { "Original", "Better" },
+    Callback = function(value)
+        ESPMode = value
+        clearAllESP()
+    end
+})
+
+ESPConfigSection:ColorPicker({
+    Title = "Player Color", Default = ESPColors.Player,
+    Callback = function(color) ESPColors.Player = color end
+})
+ESPConfigSection:ColorPicker({
+    Title = "Guard Color", Default = ESPColors.Guard,
+    Callback = function(color) ESPColors.Guard = color end
+})
+ESPConfigSection:ColorPicker({
+    Title = "Detective Color", Default = ESPColors.Detective,
+    Callback = function(color) ESPColors.Detective = color end
+})
+ESPConfigSection:ColorPicker({
+    Title = "Frontman Color", Default = ESPColors.Frontman,
+    Callback = function(color) ESPColors.Frontman = color end
+})
+ESPConfigSection:ColorPicker({
+    Title = "Baby Carrier Color", Default = ESPColors.BabyCarrier,
+    Callback = function(color) ESPColors.BabyCarrier = color end
+})
+ESPConfigSection:ColorPicker({
+    Title = "Glassmaker Color", Default = ESPColors.Glassmaker,
+    Callback = function(color) ESPColors.Glassmaker = color end
+})
+
 ESPMain:Toggle({
     Title = "ESP Player", Default = false,
-    Callback = function(state) ESPConfig.Player = state; clearESPType("Player") end
+    Callback = function(state) 
+        ESPConfig.Player = state
+        if not state then clearESPType("Player") end
+    end
 })
 
 ESPMain:Toggle({
     Title = "ESP Guard", Default = false,
-    Callback = function(state) ESPConfig.Guard = state; clearESPType("Guard") end
+    Callback = function(state) 
+        ESPConfig.Guard = state
+        if not state then clearESPType("Guard") end
+    end
 })
 
 ESPMain:Toggle({
     Title = "ESP Detective", Default = false,
-    Callback = function(state) ESPConfig.Detective = state; clearESPType("Detective") end
+    Callback = function(state) 
+        ESPConfig.Detective = state
+        if not state then clearESPType("Detective") end
+    end
 })
 
 ESPMain:Toggle({
     Title = "ESP Frontman", Default = false,
-    Callback = function(state) ESPConfig.Frontman = state; clearESPType("Frontman") end
+    Callback = function(state) 
+        ESPConfig.Frontman = state
+        if not state then clearESPType("Frontman") end
+    end
 })
 
 ESPMain:Toggle({
     Title = "ESP Baby Carrier", Default = false,
-    Callback = function(state) ESPConfig.BabyCarrier = state; clearESPType("BabyCarrier") end
+    Callback = function(state) 
+        ESPConfig.BabyCarrier = state
+        if not state then clearESPType("BabyCarrier") end
+    end
 })
 
 ESPMain:Toggle({
     Title = "ESP Glassmaker", Default = false,
-    Callback = function(state) ESPConfig.Glassmaker = state; clearESPType("Glassmaker") end
+    Callback = function(state) 
+        ESPConfig.Glassmaker = state
+        if not state then clearESPType("Glassmaker") end
+    end
 })
 
-local updateAccumulator = 0
 RunService.Heartbeat:Connect(function(dt)
-    if not ESPConfig.Player and not ESPConfig.Guard and not ESPConfig.Detective and not ESPConfig.Frontman and not ESPConfig.BabyCarrier and not ESPConfig.Glassmaker then return end
+    if not ESPConfig.Player and not ESPConfig.Guard and not ESPConfig.Detective and not ESPConfig.Frontman and not ESPConfig.BabyCarrier and not ESPConfig.Glassmaker then 
+        return 
+    end
     
     updateAccumulator = updateAccumulator + dt
     if updateAccumulator < 0.2 then return end
@@ -884,7 +943,9 @@ RunService.Heartbeat:Connect(function(dt)
                 activeHighlights[char] = activeHighlights[char] or {}
                 activeBillboards[char] = activeBillboards[char] or {}
 
-                local function updateESP(espType, color, enabled, labelText)
+                local function updateESP(espType, enabled, labelText)
+                    local color = ESPColors[espType]
+                    
                     if enabled then
                         if not activeHighlights[char][espType] or not activeHighlights[char][espType].Parent then
                             local hl = Instance.new("Highlight")
@@ -894,32 +955,116 @@ RunService.Heartbeat:Connect(function(dt)
                             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                             hl.Adornee = char; hl.Parent = char
                             activeHighlights[char][espType] = hl
+                        else
+                            activeHighlights[char][espType].FillColor = color
+                            activeHighlights[char][espType].OutlineColor = color
                         end
 
-                        if not activeBillboards[char][espType] or not activeBillboards[char][espType].Parent then
-                            local bb = Instance.new("BillboardGui")
-                            bb.Name = espType .. "BB"
-                            bb.Size = UDim2.new(0, 200, 0, 50)
-                            bb.StudsOffset = Vector3.new(0, 3, 0)
-                            bb.AlwaysOnTop = true
-                            bb.Parent = root
+                        local bb = activeBillboards[char][espType]
+                        local healthPct = hum.Health / hum.MaxHealth
+                        local healthColor = Color3.fromRGB(255 * (1 - healthPct), 255 * healthPct, 0)
+                        local dist = math.floor((root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude)
 
-                            local tl = Instance.new("TextLabel")
-                            tl.Size = UDim2.new(1, 0, 1, 0)
-                            tl.BackgroundTransparency = 1
-                            tl.TextStrokeTransparency = 0
-                            tl.TextColor3 = color
-                            tl.TextSize = 14
-                            tl.Font = Enum.Font.FredokaOne
-                            tl.Text = labelText .. "\n" .. plr.Name .. " | " .. math.floor(hum.Health) .. " HP"
-                            tl.Parent = bb
+                        if ESPMode == "Original" then
+                            if not bb or not bb.Parent or bb:FindFirstChild("HealthBarBG") then
+                                if bb then bb:Destroy() end
+                                
+                                local newBb = Instance.new("BillboardGui")
+                                newBb.Name = espType .. "BB"
+                                newBb.Size = UDim2.new(0, 200, 0, 50)
+                                newBb.StudsOffset = Vector3.new(0, 3, 0)
+                                newBb.AlwaysOnTop = true
+                                newBb.Parent = root
 
-                            activeBillboards[char][espType] = bb
-                        else
-                            local bb = activeBillboards[char][espType]
-                            local tl = bb:FindFirstChildOfClass("TextLabel")
-                            if tl then
+                                local tl = Instance.new("TextLabel")
+                                tl.Name = "TextLabel"
+                                tl.Size = UDim2.new(1, 0, 1, 0)
+                                tl.BackgroundTransparency = 1
+                                tl.TextStrokeTransparency = 0
+                                tl.TextColor3 = color
+                                tl.TextSize = 14
+                                tl.Font = Enum.Font.FredokaOne
                                 tl.Text = labelText .. "\n" .. plr.Name .. " | " .. math.floor(hum.Health) .. " HP"
+                                tl.Parent = newBb
+
+                                activeBillboards[char][espType] = newBb
+                            else
+                                local tl = bb:FindFirstChild("TextLabel")
+                                if tl then
+                                    tl.TextColor3 = color
+                                    tl.Text = labelText .. "\n" .. plr.Name .. " | " .. math.floor(hum.Health) .. " HP"
+                                end
+                            end
+                        else
+                            if not bb or not bb.Parent or not bb:FindFirstChild("HealthBarBG") then
+                                if bb then bb:Destroy() end
+                                
+                                local newBb = Instance.new("BillboardGui")
+                                newBb.Name = espType .. "BB"
+                                newBb.Size = UDim2.new(0, 180, 0, 60)
+                                newBb.StudsOffset = Vector3.new(0, 3, 0)
+                                newBb.AlwaysOnTop = true
+                                newBb.Parent = root
+
+                                local tl = Instance.new("TextLabel")
+                                tl.Name = "TextLabel"
+                                tl.Size = UDim2.new(1, 0, 0.5, 0)
+                                tl.BackgroundTransparency = 1
+                                tl.TextStrokeTransparency = 0
+                                tl.TextColor3 = color
+                                tl.TextSize = 14
+                                tl.Font = Enum.Font.FredokaOne
+                                tl.Text = labelText .. " | " .. plr.Name .. " [" .. dist .. "m]"
+                                tl.Parent = newBb
+
+                                local healthTxt = Instance.new("TextLabel")
+                                healthTxt.Name = "HealthText"
+                                healthTxt.Size = UDim2.new(1, 0, 0.2, 0)
+                                healthTxt.Position = UDim2.new(0, 0, 0.5, 0)
+                                healthTxt.BackgroundTransparency = 1
+                                healthTxt.TextStrokeTransparency = 0
+                                healthTxt.TextColor3 = healthColor
+                                healthTxt.TextSize = 12
+                                healthTxt.Font = Enum.Font.GothamBold
+                                healthTxt.Text = math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth) .. " HP"
+                                healthTxt.Parent = newBb
+
+                                local bg = Instance.new("Frame")
+                                bg.Name = "HealthBarBG"
+                                bg.Size = UDim2.new(1, 0, 0.15, 0)
+                                bg.Position = UDim2.new(0, 0, 0.75, 0)
+                                bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                                bg.BorderSizePixel = 1
+                                bg.BorderColor3 = Color3.fromRGB(255, 255, 255)
+                                bg.Parent = newBb
+
+                                local healthFrame = Instance.new("Frame")
+                                healthFrame.Name = "HealthFrame"
+                                healthFrame.Size = UDim2.new(healthPct, 0, 1, 0)
+                                healthFrame.BackgroundColor3 = healthColor
+                                healthFrame.BorderSizePixel = 0
+                                healthFrame.Parent = bg
+
+                                activeBillboards[char][espType] = newBb
+                            else
+                                local tl = bb:FindFirstChild("TextLabel")
+                                if tl then
+                                    tl.TextColor3 = color
+                                    tl.Text = labelText .. " | " .. plr.Name .. " [" .. dist .. "m]"
+                                end
+                                local healthTxt = bb:FindFirstChild("HealthText")
+                                if healthTxt then
+                                    healthTxt.TextColor3 = healthColor
+                                    healthTxt.Text = math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth) .. " HP"
+                                end
+                                local bg = bb:FindFirstChild("HealthBarBG")
+                                if bg then
+                                    local healthFrame = bg:FindFirstChild("HealthFrame")
+                                    if healthFrame then
+                                        healthFrame.Size = UDim2.new(healthPct, 0, 1, 0)
+                                        healthFrame.BackgroundColor3 = healthColor
+                                    end
+                                end
                             end
                         end
                     else
@@ -935,21 +1080,20 @@ RunService.Heartbeat:Connect(function(dt)
                 end
 
                 if babyBack then
-                    updateESP("Player", Color3.fromRGB(255, 255, 255), false, "Player")
-                    updateESP("Guard", Color3.fromRGB(255, 105, 180), false, "Guard")
-                    updateESP("Detective", Color3.fromRGB(255, 215, 0), false, "Detective")
-                    updateESP("Frontman", Color3.fromRGB(255, 0, 255), false, "Frontman")
-                    updateESP("BabyCarrier", Color3.fromRGB(255, 215, 0), ESPConfig.BabyCarrier, "Carried Baby")
+                    updateESP("Player", false, "Player")
+                    updateESP("Guard", false, "Guard")
+                    updateESP("Detective", false, "Detective")
+                    updateESP("Frontman", false, "Frontman")
+                    updateESP("BabyCarrier", ESPConfig.BabyCarrier, "Carried Baby")
                 else
-                    updateESP("Player", Color3.fromRGB(255, 255, 255), ESPConfig.Player and isPlayerTeam, "Player")
-                    updateESP("Guard", Color3.fromRGB(255, 105, 180), ESPConfig.Guard and isGuard, "Guard")
-                    updateESP("Detective", Color3.fromRGB(255, 215, 0), ESPConfig.Detective and isDetective, "Detective")
-                    updateESP("Frontman", Color3.fromRGB(255, 0, 255), ESPConfig.Frontman and isFrontman, "Frontman")
-                    updateESP("BabyCarrier", Color3.fromRGB(255, 215, 0), false, "Carried Baby")
+                    updateESP("Player", ESPConfig.Player and isPlayerTeam, "Player")
+                    updateESP("Guard", ESPConfig.Guard and isGuard, "Guard")
+                    updateESP("Detective", ESPConfig.Detective and isDetective, "Detective")
+                    updateESP("Frontman", ESPConfig.Frontman and isFrontman, "Frontman")
+                    updateESP("BabyCarrier", false, "Carried Baby")
                 end
                 
-                updateESP("Glassmaker", Color3.fromRGB(255, 215, 0), ESPConfig.Glassmaker and glassmaker, "Glassmaker")
-
+                updateESP("Glassmaker", ESPConfig.Glassmaker and glassmaker, "Glassmaker")
             end
         end
     end
@@ -2493,12 +2637,10 @@ local cleanConn = nil
 local cleanThrottle = 0
 
 GuardMain:Toggle({
-    Title = "Auto Clean DeadBodies",
-    Default = false,
+    Title = "Auto Clean DeadBodies", Default = false,
     Callback = function(state)
         autoCleanEnabled = state
         if cleanConn then cleanConn:Disconnect() cleanConn = nil end
-        
         if not autoCleanEnabled then return end
 
         cleanConn = RunService.Heartbeat:Connect(function()
@@ -2506,66 +2648,39 @@ GuardMain:Toggle({
             if tick() - cleanThrottle < 0.5 then return end
             cleanThrottle = tick()
 
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            
-            if not hrp then return end
+            -- Loop through ALL dead characters in the workspace
+            local data = Workspace:FindFirstChild("Data")
+            local deadFolder = data and data:FindFirstChild("DeadCharacters")
 
-            local originalCFrame = hrp.CFrame
-            local foundTarget = false
+            if not deadFolder then return end
 
-            -- I-loop ang lahat ng players para hanapin kung sino ang may prompt (patay)
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character then
-                    local plrChar = plr.Character
-                    local prompt = plrChar:FindFirstChildWhichIsA("ProximityPrompt", true)
+            for _, body in ipairs(deadFolder:GetChildren()) do
+                if body and body:IsA("Model") then
+                    local prompt = body:FindFirstChildWhichIsA("ProximityPrompt", true)
                     
                     if prompt and prompt.Enabled then
-                        local promptPart = prompt.Parent
-                        if promptPart and promptPart:IsA("BasePart") then
-                            foundTarget = true
-                            
-                            -- Teleport sa player na may prompt
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                            hrp.AssemblyAngularVelocity = Vector3.zero
-                            hrp.CFrame = promptPart.CFrame + Vector3.new(0, 3, 0)
-                            
-                            task.wait(0.15)
-                            
-                            -- Fire the prompt
-                            pcall(function()
-                                if fireproximityprompt then 
-                                    fireproximityprompt(prompt) 
-                                else 
-                                    prompt:InputHoldBegin()
-                                    task.wait(prompt.HoldDuration + 0.05)
-                                    prompt:InputHoldEnd() 
-                                end
-                            end)
-                            
-                            task.wait(0.15)
-                            
-                            -- Balik sa original position
-                            if hrp and hrp.Parent then
-                                hrp.AssemblyLinearVelocity = Vector3.zero
-                                hrp.AssemblyAngularVelocity = Vector3.zero
-                                hrp.CFrame = originalCFrame
+                        -- 1. Override the distance limit so we can fire it from anywhere
+                        pcall(function()
+                            prompt.MaxActivationDistance = 10000
+                            prompt.RequiresLineOfSight = false
+                        end)
+
+                        -- 2. Fire the prompt
+                        pcall(function()
+                            if fireproximityprompt then 
+                                fireproximityprompt(prompt) 
+                            else 
+                                prompt:InputHoldBegin()
+                                task.wait(prompt.HoldDuration + 0.05)
+                                prompt:InputHoldEnd() 
                             end
-                            
-                            break -- Isang prompt lang muna bawat loop
-                        end
+                        end)
                     end
                 end
-            end
-            
-            -- Kung wala nang nahanap na prompt, okay lang, maghihintay ulit sa susunod na loop
-            if not foundTarget then
-                -- Optional: pwede mong ilagay dito ang logic kung wala nang patay
             end
         end)
     end
 })
-
 
 local autoBurnEnabled = false
 local burnConn = nil
