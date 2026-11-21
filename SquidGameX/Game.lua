@@ -275,8 +275,6 @@ Main:Toggle({
     end
 })
 
-Player:Section("Movement")
-
 local jumpBoostEnabled = false
 local jumpPowerValue = 50
 
