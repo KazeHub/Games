@@ -275,6 +275,71 @@ Main:Toggle({
     end
 })
 
+Player:Section("Movement")
+
+local jumpBoostEnabled = false
+local jumpPowerValue = 50
+
+local function updateJumpPower()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.UseJumpPower = true
+        if jumpBoostEnabled then
+            hum.JumpPower = jumpPowerValue
+        else
+            hum.JumpPower = 50
+        end
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    updateJumpPower()
+end)
+
+Main:Slider({
+    Title = "Jump Power",
+    Min = 50,
+    Max = 100,
+    Default = 50,
+    Callback = function(val)
+        jumpPowerValue = val
+        if jumpBoostEnabled then
+            updateJumpPower()
+        end
+    end
+})
+
+Main:Toggle({
+    Title = "Jump Boost",
+    Default = false,
+    Callback = function(state)
+        jumpBoostEnabled = state
+        updateJumpPower()
+    end
+})
+
+local infJumpEnabled = false
+
+UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+Main:Toggle({
+    Title = "Infinite Jump",
+    Default = false,
+    Callback = function(state)
+        infJumpEnabled = state
+    end
+})
+
 Main:Keybind({
     Title = "Hide & Open",
     Default = Enum.KeyCode.Q,
@@ -457,69 +522,87 @@ CombatGun:Slider({
 })
 
 local auraKillActive = false
+local auraKillConn = nil
+
 CombatGun:Toggle({
     Title = "Aura Kill",
     Default = false,
     Callback = function(state)
         auraKillActive = state
-        if auraKillActive then
-            task.spawn(function()
-                while auraKillActive do
-                    pcall(function()
-                        local player = game:GetService("Players").LocalPlayer
-                        local char = player.Character
-                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                        local backpack = player:FindFirstChild("Backpack")
-                        local weapon = backpack and backpack:FindFirstChild("MPS-5")
-                        
-                        if hrp and weapon then
-                            for _, target in ipairs(game:GetService("Players"):GetPlayers()) do
-                                if target ~= player and target.Character then
-                                    local tChar = target.Character
-                                    local tHrp = tChar:FindFirstChild("HumanoidRootPart")
-                                    local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
-                                    local tTorso = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso")
-                                    
-                                    if tHrp and tHumanoid and tHumanoid.Health > 0 and tTorso then
-                                        local dist = (tHrp.Position - hrp.Position).Magnitude
-                                        if dist <= currentRange then
-                                            local weaponFired = game:GetService("ReplicatedStorage").Local.GunSystem.Network.WeaponFired
-                                            local weaponHit = game:GetService("ReplicatedStorage").Local.GunSystem.Network.WeaponHit
-                                            
-                                            weaponFired:FireServer(
-                                                weapon,
-                                                {
-                                                    tHrp.Position,
-                                                    Vector3.new(0, 0, -1),
-                                                    Vector2.new(0, 1)
-                                                }
-                                            )
-                                            
-                                            weaponHit:FireServer(
-                                                weapon,
-                                                {
-                                                    p = tTorso.Position,
-                                                    pid = 1,
-                                                    part = tTorso,
-                                                    d = dist,
-                                                    maxDist = dist,
-                                                    h = tHumanoid,
-                                                    m = Enum.Material.Plastic,
-                                                    n = Vector3.new(0, 1, 0),
-                                                    t = 0.42185773238282009,
-                                                    sid = 1
-                                                }
-                                            )
-                                        end
-                                    end
-                                end
-                            end
+        if auraKillConn then auraKillConn:Disconnect() auraKillConn = nil end
+        
+        if not auraKillActive then return end
+
+        auraKillConn = RunService.Heartbeat:Connect(function()
+            if not auraKillActive then return end
+            
+            local player = game:GetService("Players").LocalPlayer
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            -- Hanapin ang kahit anong Tool na pwedeng maging baril
+            local backpack = player:FindFirstChild("Backpack")
+            local weapon = char:FindFirstChildWhichIsA("Tool") 
+                        or (backpack and backpack:FindFirstChild("MPS-5")) 
+                        or (backpack and backpack:FindFirstChildWhichIsA("Tool"))
+
+            if not weapon then return end
+
+            local rs = game:GetService("ReplicatedStorage")
+            local weaponFired = rs:FindFirstChild("Local") 
+                and rs.Local:FindFirstChild("GunSystem") 
+                and rs.Local.GunSystem:FindFirstChild("Network") 
+                and rs.Local.GunSystem.Network:FindFirstChild("WeaponFired")
+                
+            local weaponHit = rs:FindFirstChild("Local") 
+                and rs.Local:FindFirstChild("GunSystem") 
+                and rs.Local.GunSystem:FindFirstChild("Network") 
+                and rs.Local.GunSystem.Network:FindFirstChild("WeaponHit")
+
+            if not weaponFired or not weaponHit then return end
+
+            for _, target in ipairs(game:GetService("Players"):GetPlayers()) do
+                if target ~= player and target.Character then
+                    local tChar = target.Character
+                    local tHrp = tChar:FindFirstChild("HumanoidRootPart")
+                    local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
+                    local tTorso = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso")
+                    
+                    if tHrp and tHumanoid and tHumanoid.Health > 0 and tTorso then
+                        local dist = (tHrp.Position - hrp.Position).Magnitude
+                        if dist <= currentRange then
+                            pcall(function()
+                                weaponFired:FireServer(
+                                    weapon,
+                                    {
+                                        tHrp.Position,
+                                        Vector3.new(0, 0, -1),
+                                        Vector2.new(0, 1)
+                                    }
+                                )
+                                
+                                weaponHit:FireServer(
+                                    weapon,
+                                    {
+                                        p = tTorso.Position,
+                                        pid = 1,
+                                        part = tTorso,
+                                        d = dist,
+                                        maxDist = dist,
+                                        h = tHumanoid,
+                                        m = Enum.Material.Plastic,
+                                        n = Vector3.new(0, 1, 0),
+                                        t = 0.42185773238282009,
+                                        sid = 1
+                                    }
+                                )
+                            end)
                         end
-                    end)
-                    task.wait(0.2)
+                    end
                 end
-            end)
-        end
+            end
+        end)
     end
 })
 
@@ -639,6 +722,17 @@ CombatHitbox:Toggle({
     Default = false,
     Callback = function(state)
         HitboxConfig.SelectedPlayer = state
+        if not state then
+            for root in pairs(OriginalProperties) do
+                local char = root.Parent
+                if char then
+                    local plr = Players:GetPlayerFromCharacter(char)
+                    if plr and HitboxConfig.Names[plr.Name] then
+                        HitboxRestore(root)
+                    end
+                end
+            end
+        end
     end
 })
 
@@ -658,6 +752,18 @@ local function AddHitboxToggle(title, key)
         Default = false,
         Callback = function(state)
             HitboxConfig[key] = state
+            if not state then
+                -- I-restore agad ang hitbox ng mga players na nasa category na ito
+                for root in pairs(OriginalProperties) do
+                    local char = root.Parent
+                    if char then
+                        local plr = Players:GetPlayerFromCharacter(char)
+                        if plr and GetHitboxType(plr, char) == key then
+                            HitboxRestore(root)
+                        end
+                    end
+                end
+            end
         end
     })
 end
@@ -670,6 +776,14 @@ AddHitboxToggle("Hitbox Baby Carrier", "BabyCarrier")
 AddHitboxToggle("Hitbox Glassmaker", "Glassmaker")
 
 RunService.Heartbeat:Connect(function(dt)
+    -- Kung walang naka-on na toggle, i-restore lahat at wag na mag-loop
+    if not HitboxConfig.SelectedPlayer and not HitboxConfig.Player and not HitboxConfig.Guard and not HitboxConfig.Detective and not HitboxConfig.Frontman and not HitboxConfig.BabyCarrier and not HitboxConfig.Glassmaker then
+        if next(OriginalProperties) then
+            HitboxRestoreAll()
+        end
+        return
+    end
+
     updateAccumulator += dt
     if updateAccumulator < 0.2 then return end
     updateAccumulator = 0
@@ -1423,11 +1537,8 @@ local function RestoreHitboxTypeHS(espType)
     for root in pairs(OriginalHitboxesHS) do
         local char = root.Parent
         if char then
-            local hasType = espType == "Blue"
-                and char:FindFirstChild("Vest_blue", true)
-                or espType == "Red"
-                and char:FindFirstChild("Vest_red", true)
-
+            local hasType = espType == "Blue" and char:FindFirstChild("Vest_blue", true) 
+                         or espType == "Red" and char:FindFirstChild("Vest_red", true)
             if hasType then RestoreHitboxHS(root) end
         end
     end
@@ -1462,7 +1573,14 @@ PlayerGameHideSeek:Toggle({
 })
 
 RunService.Heartbeat:Connect(function(dt)
-    if not ESPHitboxConfigHS.Blue and not ESPHitboxConfigHS.Red then return end
+    if not ESPHitboxConfigHS.Blue and not ESPHitboxConfigHS.Red then
+        if next(OriginalHitboxesHS) then
+            for root in pairs(OriginalHitboxesHS) do
+                RestoreHitboxHS(root)
+            end
+        end
+        return
+    end
 
     updateAccumulatorHS += dt
     if updateAccumulatorHS < 0.2 then return end
@@ -1477,8 +1595,8 @@ RunService.Heartbeat:Connect(function(dt)
             if root and hum and hum.Health > 0 then
                 local hasBlue = char:FindFirstChild("Vest_blue", true) ~= nil
                 local hasRed = char:FindFirstChild("Vest_red", true) ~= nil
-                local enabled = ESPHitboxConfigHS.Blue and hasBlue
-                    or ESPHitboxConfigHS.Red and hasRed
+                
+                local enabled = (ESPHitboxConfigHS.Blue and hasBlue) or (ESPHitboxConfigHS.Red and hasRed)
 
                 if enabled then
                     if not OriginalHitboxesHS[root] then
@@ -2154,36 +2272,46 @@ DetectiveMain:Button({
             local char = LocalPlayer.Character
             if not char then return end
             
-            local evidenceFolder = Workspace:FindFirstChild("Data") and Workspace.Data:FindFirstChild("Detective") and Workspace.Data.Detective:FindFirstChild("Evidence") and Workspace.Data.Detective.Evidence:FindFirstChild("Instances")
+            local evidenceFolder = Workspace:FindFirstChild("Data") 
+                and Workspace.Data:FindFirstChild("Detective") 
+                and Workspace.Data.Detective:FindFirstChild("Evidence") 
+                and Workspace.Data.Detective.Evidence:FindFirstChild("Instances")
             
             if evidenceFolder then
-                local evidenceList = evidenceFolder:GetChildren()
+                local count = 0
                 
-                if #evidenceList > 0 then
-                    local count = 0
+                for _, ev in ipairs(evidenceFolder:GetChildren()) do
+                    if count >= 8 or not char.Parent then break end
                     
-                    for _, ev in ipairs(evidenceList) do
-                        if count >= 8 or not char.Parent then break end
+                    if ev and ev.Parent then
+                        local evCFrame
+                        if ev:IsA("BasePart") then 
+                            evCFrame = ev.CFrame
+                        elseif ev:IsA("Model") then 
+                            evCFrame = ev:GetPivot() 
+                        end
                         
-                        if ev and ev.Parent then
-                            local evCFrame
-                            if ev:IsA("BasePart") then evCFrame = ev.CFrame
-                            elseif ev:IsA("Model") then evCFrame = ev:GetPivot() end
+                        if evCFrame then
+                            -- 1. Teleport
+                            char:PivotTo(evCFrame + Vector3.new(0, 3, 0))
+                            task.wait(0.5) -- ANTIHIN MO MUNA BAGO MAG-FIRE
                             
-                            if evCFrame then
-                                char:PivotTo(evCFrame + Vector3.new(0, 3, 0))
-                                task.wait(0.3) 
-                                
-                                local evPrompt = getExactPrompt(ev)
-                                if evPrompt and evPrompt.Enabled then
-                                    pcall(function()
-                                        if fireproximityprompt then fireproximityprompt(evPrompt)
-                                        else evPrompt:InputHoldBegin(); task.wait(evPrompt.HoldDuration + 0.05); evPrompt:InputHoldEnd() end
-                                    end)
-                                end
-                                task.wait(0.3) 
-                                count = count + 1
+                            -- 2. Fire Prompt
+                            local evPrompt = getExactPrompt(ev)
+                            if evPrompt and evPrompt.Enabled then
+                                pcall(function()
+                                    if fireproximityprompt then 
+                                        fireproximityprompt(evPrompt)
+                                    else 
+                                        evPrompt:InputHoldBegin()
+                                        task.wait(evPrompt.HoldDuration + 0.05)
+                                        evPrompt:InputHoldEnd() 
+                                    end
+                                end)
                             end
+                            
+                            task.wait(0.5) -- ANTIHIN MO ULIT BAGO LUMIPAT SA SUNOD
+                            count = count + 1
                         end
                     end
                 end
