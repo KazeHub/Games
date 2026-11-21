@@ -474,54 +474,47 @@ GameYen:Toggle({
 })
 
 GameYen:Button({
-    Title = "Yen Collect",
+    Title = "Collect Yen",
     Description = "When it's stairs stage, on the Auto Shoot HogoGuntai so you won't die",
     Callback = function()
         task.spawn(function()
-            local char = game:GetService("Players").LocalPlayer.Character
+            local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local mimicFolder = workspace:FindFirstChild("MimicCurrencySpawns")
-            local yenFolder = mimicFolder and mimicFolder:FindFirstChild("Yen")
-            if not hrp or not yenFolder then return end
+            if not hrp then return end
 
-            local RS = game:GetService("RunService")
             local originalCFrame = hrp.CFrame
+            local yenFolder = Workspace:FindFirstChild("Yen")
+            if not yenFolder then return end
 
-            while true do
-                local items = yenFolder:GetChildren()
-                if #items == 0 then break end
-                
-                local item = items[1]
-                local targetPart = item:IsA("BasePart") and item or (item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)))
-                
-                if targetPart then
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    char:PivotTo(targetPart.CFrame + Vector3.new(0, 3, 0))
-                    RS.Heartbeat:Wait()
-
-                    local prompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
-                    if prompt then
-                        prompt.HoldDuration = 0
-                        prompt.RequiresLineOfSight = false
+            for _, yenObj in ipairs(yenFolder:GetDescendants()) do
+                if yenObj:IsA("BasePart") and yenObj.Name == "YenCoin" then
+                    local prompt = yenObj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    
+                    if prompt and prompt.Enabled then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                        hrp.CFrame = yenObj.CFrame
+                        
+                        task.wait(0.1)
+                        
                         pcall(function()
                             if fireproximityprompt then
-                                fireproximityprompt(prompt, 0)
+                                fireproximityprompt(prompt)
                             else
                                 prompt:InputHoldBegin()
+                                task.wait(prompt.HoldDuration + 0.05)
                                 prompt:InputHoldEnd()
                             end
                         end)
+                        
+                        task.wait(0.1)
                     end
-                    RS.Heartbeat:Wait()
-                else
-                    RS.Heartbeat:Wait()
                 end
             end
 
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
-            char:PivotTo(originalCFrame)
+            hrp.CFrame = originalCFrame
         end)
     end
 })
