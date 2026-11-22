@@ -606,6 +606,8 @@ CombatGun:Toggle({
 
 CombatGun:Section("Guns")
 
+local CombatGun = CombatTab:CreateSubTab({ Title = "Gun", Icon = "crosshair", Default = false })
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
@@ -613,6 +615,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared", 5)
 local WeaponsFolder = Shared and Shared:WaitForChild("Weapons", 5)
 
 local SelectedWeapon = nil
+local ClonedWeapons = setmetatable({}, {__mode = "k"}) -- Table para i-track ang mga clone
 
 local function GetWeaponOptions()
     local options = {}
@@ -627,7 +630,7 @@ local function GetWeaponOptions()
 end
 
 CombatGun:BoxDropdown({
-    Title = "Select Weapon (Visual)",
+    Title = "Select Weapon",
     SearchBar = true,
     Options = GetWeaponOptions(),
     Default = "Select Weapon",
@@ -648,6 +651,7 @@ CombatGun:Button({
                 local backpack = LocalPlayer:FindFirstChild("Backpack")
                 if backpack then
                     local clonedWeapon = weapon:Clone()
+                    ClonedWeapons[clonedWeapon] = true -- I-track ang clone
                     clonedWeapon.Parent = backpack
                 end
             end
@@ -664,7 +668,11 @@ CombatGun:Button({
 
             for _, tool in ipairs(char:GetChildren()) do
                 if tool:IsA("Tool") then
-                    tool:Destroy()
+                    -- I-delete lang kung ito ay galing sa ating clone
+                    if ClonedWeapons[tool] then
+                        tool:Destroy()
+                        ClonedWeapons[tool] = nil
+                    end
                 end
             end
         end)
