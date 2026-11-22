@@ -495,6 +495,30 @@ CombatGun:Slider({
     end
 })
 
+-- ==========================================
+-- NEW: SAFE PLAYERS DROPDOWN
+-- ==========================================
+local SafePlayers = {} -- Table para i-store ang mga pangalan ng safe players
+
+CombatGun:BoxDropdown({
+    Title = "Whitelisted (Safe from Aura)", -- Mas creative na title
+    SearchBar = true,
+    PlayerList = true,
+    Multi = true,
+    Callback = function(list)
+        local set = {}
+        if type(list) == "table" then
+            for _, name in ipairs(list) do
+                set[name] = true
+            end
+        end
+        SafePlayers = set
+    end
+})
+
+-- ==========================================
+-- AURA KILL (Updated with Safe Players)
+-- ==========================================
 local auraKillActive = false
 local auraKillConn = nil
 
@@ -515,7 +539,6 @@ CombatGun:Toggle({
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
 
-            -- Hanapin ang kahit anong Tool na pwedeng maging baril
             local backpack = player:FindFirstChild("Backpack")
             local weapon = char:FindFirstChildWhichIsA("Tool") 
                         or (backpack and backpack:FindFirstChild("MPS-5")) 
@@ -537,7 +560,8 @@ CombatGun:Toggle({
             if not weaponFired or not weaponHit then return end
 
             for _, target in ipairs(game:GetService("Players"):GetPlayers()) do
-                if target ~= player and target.Character then
+                -- CHECK KUNG SAFE ANG PLAYER
+                if target ~= player and target.Character and not SafePlayers[target.Name] then
                     local tChar = target.Character
                     local tHrp = tChar:FindFirstChild("HumanoidRootPart")
                     local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
@@ -574,6 +598,73 @@ CombatGun:Toggle({
                             end)
                         end
                     end
+                end
+            end
+        end)
+    end
+})
+
+CombatGun:Section("Guns")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local Shared = ReplicatedStorage:WaitForChild("Shared", 5)
+local WeaponsFolder = Shared and Shared:WaitForChild("Weapons", 5)
+
+local SelectedWeapon = nil
+
+local function GetWeaponOptions()
+    local options = {}
+    if WeaponsFolder then
+        for _, tool in ipairs(WeaponsFolder:GetChildren()) do
+            if tool:IsA("Tool") then
+                table.insert(options, { Text = tool.Name, Tool = tool })
+            end
+        end
+    end
+    return options
+end
+
+CombatGun:BoxDropdown({
+    Title = "Select Weapon (Visual)",
+    SearchBar = true,
+    Options = GetWeaponOptions(),
+    Default = "Select Weapon",
+    Callback = function(selected)
+        SelectedWeapon = selected
+    end
+})
+
+CombatGun:Button({
+    Title = "Take Gun",
+    Callback = function()
+        if not SelectedWeapon or SelectedWeapon == "Select Weapon" then return end
+
+        task.spawn(function()
+            local weapon = WeaponsFolder and WeaponsFolder:FindFirstChild(SelectedWeapon)
+            
+            if weapon and weapon:IsA("Tool") then
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                if backpack then
+                    local clonedWeapon = weapon:Clone()
+                    clonedWeapon.Parent = backpack
+                end
+            end
+        end)
+    end
+})
+
+CombatGun:Button({
+    Title = "Delete Equipped Gun",
+    Callback = function()
+        task.spawn(function()
+            local char = LocalPlayer.Character
+            if not char then return end
+
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool:IsA("Tool") then
+                    tool:Destroy()
                 end
             end
         end)
