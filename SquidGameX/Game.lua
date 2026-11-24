@@ -606,8 +606,6 @@ CombatGun:Toggle({
 
 CombatGun:Section("Guns")
 
-local CombatGun = CombatTab:CreateSubTab({ Title = "Gun", Icon = "crosshair", Default = false })
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
@@ -740,7 +738,12 @@ local function UpdateHitbox(player)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-    if not root or not humanoid or humanoid.Health <= 0 then
+    if not root or not humanoid then
+        return
+    end
+
+    -- Kung patay na, wag muna i-restore kasi mag-rerespawn naman at magbabago ng character
+    if humanoid.Health <= 0 then
         if root then HitboxRestore(root) end
         return
     end
@@ -765,8 +768,9 @@ local function UpdateHitbox(player)
         }
     end
 
+    -- Transparency 0.3 as requested
     root.Size = Vector3.new(HitboxConfig.Size, HitboxConfig.Size, HitboxConfig.Size)
-    root.Transparency = 0.5
+    root.Transparency = 0.3
     root.Color = Color3.fromRGB(0, 100, 255)
     root.Material = Enum.Material.Neon
     root.CanCollide = false
@@ -826,7 +830,6 @@ local function AddHitboxToggle(title, key)
         Callback = function(state)
             HitboxConfig[key] = state
             if not state then
-                -- I-restore agad ang hitbox ng mga players na nasa category na ito
                 for root in pairs(OriginalProperties) do
                     local char = root.Parent
                     if char then
@@ -848,8 +851,21 @@ AddHitboxToggle("Hitbox Frontman", "Frontman")
 AddHitboxToggle("Hitbox Baby Carrier", "BabyCarrier")
 AddHitboxToggle("Hitbox Glassmaker", "Glassmaker")
 
+-- Para agad mag-apply pag nag-respawn
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function(char)
+        task.wait(0.1) -- wait for HumanoidRootPart to load
+        if char:FindFirstChild("HumanoidRootPart") then
+            UpdateHitbox(plr)
+        end
+    end)
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    -- Optional: Refresh lahat pag nag-respawn ka
+end)
+
 RunService.Heartbeat:Connect(function(dt)
-    -- Kung walang naka-on na toggle, i-restore lahat at wag na mag-loop
     if not HitboxConfig.SelectedPlayer and not HitboxConfig.Player and not HitboxConfig.Guard and not HitboxConfig.Detective and not HitboxConfig.Frontman and not HitboxConfig.BabyCarrier and not HitboxConfig.Glassmaker then
         if next(OriginalProperties) then
             HitboxRestoreAll()
@@ -1201,6 +1217,52 @@ end)
 local PlayerGame = Window:CreateTab({ Title = "Player GamePlay", Icon = "play" })
 local PlayerGameRLGL = PlayerGame:CreateSubTab({ Title = "RL & GL", Icon = "siren", Default = true })
 
+PlayerGameRLGL:Button({
+    Title = "Instant Win (RLGL)",
+    Callback = function()
+        task.spawn(function()
+            local rs = game:GetService("ReplicatedStorage")
+            local remoteEvents = rs:FindFirstChild("RemoteEvents")
+            
+            if not remoteEvents then return end
+
+            -- Hanapin ang lahat ng RemoteEvent na may "Replica" o "Set" sa pangalan
+            local replicaRemote = nil
+            for _, remote in ipairs(remoteEvents:GetDescendants()) do
+                if remote:IsA("RemoteEvent") then
+                    local name = string.lower(remote.Name)
+                    if name:find("replica") or name:find("set") or name:find("data") or name:find("profile") then
+                        replicaRemote = remote
+                        break
+                    end
+                end
+            end
+
+            if replicaRemote then
+                -- Try to fire with the replica path
+                pcall(function()
+                    -- Method 1: Path-based (kung ganito ang format)
+                    replicaRemote:FireServer(68, {"CompletedMaps", "RedLightGreenLight", "count"}, 149)
+                    
+                    -- Method 2: Direct key
+                    replicaRemote:FireServer("CompletedMaps_RedLightGreenLight", 149)
+                    
+                    -- Method 3: Set attribute
+                    replicaRemote:FireServer("Set", "CompletedMaps", "RedLightGreenLight", 149)
+                end)
+            end
+
+            -- Fallback: Local spoof para makita sa UI mo
+            pcall(function()
+                local Event = rs:FindFirstChild("RemoteEvents") and rs.RemoteEvents:FindFirstChild("ReplicaSet")
+                if Event and firesignal then
+                    firesignal(Event.OnClientEvent, 68, {"CompletedMaps", "RedLightGreenLight", "count"}, 149)
+                end
+            end)
+        end)
+    end
+})
+
 local autoPlayEnabled = false
 local rlglConnection = nil
 
@@ -1483,7 +1545,6 @@ PlayerGameRebellion:Button({
 
             if door then
                 local doorCFrame = door:IsA("BasePart") and door.CFrame or door:GetPivot()
-                local prompt = door:FindFirstChildWhichIsA("ProximityPrompt", true)
 
                 if doorCFrame then
                     hrp.AssemblyLinearVelocity = Vector3.zero
@@ -1491,15 +1552,29 @@ PlayerGameRebellion:Button({
                     hrp.CFrame = doorCFrame + Vector3.new(0, 3, 0)
                     
                     task.wait(0.2)
-                    
-                    if prompt and prompt.Enabled then
+
+                    -- Find the nearest enabled prompt
+                    local nearestPrompt = nil
+                    local shortestDist = 10
+
+                    for _, obj in ipairs(Workspace:GetDescendants()) do
+                        if obj:IsA("ProximityPrompt") and obj.Enabled and obj.Parent and obj.Parent:IsA("BasePart") then
+                            local dist = (hrp.Position - obj.Parent.Position).Magnitude
+                            if dist < shortestDist then
+                                shortestDist = dist
+                                nearestPrompt = obj
+                            end
+                        end
+                    end
+
+                    if nearestPrompt then
                         pcall(function()
                             if fireproximityprompt then
-                                fireproximityprompt(prompt)
+                                fireproximityprompt(nearestPrompt)
                             else
-                                prompt:InputHoldBegin()
-                                task.wait(prompt.HoldDuration + 0.05)
-                                prompt:InputHoldEnd()
+                                nearestPrompt:InputHoldBegin()
+                                task.wait(nearestPrompt.HoldDuration + 0.05)
+                                nearestPrompt:InputHoldEnd()
                             end
                         end)
                     end
@@ -2033,21 +2108,31 @@ PlayerGameHideSeek:Toggle({
     Callback = setDoorESP 
 })
 
-local dropsESPEnabled = false
-local dropsObjects = {}
-local dropsAddConn = nil
-local dropsUpdateConn = nil
-local lastUpdate = 0
+local pickupsESPEnabled = false
+local pickupObjects = {}
+local pickupConn = nil
+local pickupUpdateConn = nil
+local pickupLastUpdate = 0
 
-local function createDropsESP(obj)
-    if not obj or dropsObjects[obj] or not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+local function clearPickupsESP()
+    for obj, data in pairs(pickupObjects) do
+        if data.Highlight then data.Highlight:Destroy() end
+        if data.Billboard then data.Billboard:Destroy() end
+    end
+    pickupObjects = {}
+    if pickupConn then pickupConn:Disconnect() pickupConn = nil end
+    if pickupUpdateConn then pickupUpdateConn:Disconnect() pickupUpdateConn = nil end
+end
+
+local function createPickupsESP(obj)
+    if not obj or pickupObjects[obj] or not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
     local part = obj:IsA("BasePart") and obj or obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart", true)
     if not part then return end
 
     local hl = Instance.new("Highlight")
-    hl.Name = "DropsESP"
-    hl.FillColor = Color3.fromRGB(255, 255, 255)
-    hl.OutlineColor = Color3.fromRGB(0, 0, 0)
+    hl.Name = "KazePickupESP"
+    hl.FillColor = Color3.fromRGB(255, 255, 255) -- White
+    hl.OutlineColor = Color3.fromRGB(0, 0, 0)     -- Black
     hl.FillTransparency = 0.5
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -2055,12 +2140,14 @@ local function createDropsESP(obj)
     hl.Parent = obj
 
     local bb = Instance.new("BillboardGui")
+    bb.Name = "KazePickupBB"
     bb.Size = UDim2.new(0, 200, 0, 50)
     bb.StudsOffset = Vector3.new(0, 3, 0)
     bb.AlwaysOnTop = true
     bb.Parent = part
 
     local tl = Instance.new("TextLabel")
+    tl.Name = "PickupText"
     tl.Size = UDim2.new(1, 0, 1, 0)
     tl.BackgroundTransparency = 1
     tl.TextStrokeTransparency = 0
@@ -2071,66 +2158,158 @@ local function createDropsESP(obj)
     tl.Text = obj.Name
     tl.Parent = bb
 
-    dropsObjects[obj] = { Highlight = hl, Billboard = bb, TextLabel = tl, Part = part }
-end
-
-local function clearDropsESP()
-    for obj, data in pairs(dropsObjects) do
-        if data.Highlight then data.Highlight:Destroy() end
-        if data.Billboard then data.Billboard:Destroy() end
-    end
-    dropsObjects = {}
-    if dropsAddConn then dropsAddConn:Disconnect() dropsAddConn = nil end
-    if dropsUpdateConn then dropsUpdateConn:Disconnect() dropsUpdateConn = nil end
+    pickupObjects[obj] = { Highlight = hl, Billboard = bb, TextLabel = tl, Part = part }
 end
 
 PlayerGameHideSeek:Toggle({
-    Title = "ESP Drops",
+    Title = "ESP Pickups",
     Default = false,
     Callback = function(state)
-        dropsESPEnabled = state
-        clearDropsESP()
-        if not dropsESPEnabled then return end
+        pickupsESPEnabled = state
+        clearPickupsESP()
+        if not pickupsESPEnabled then return end
 
-        task.spawn(function()
-            local pickups = Workspace:FindFirstChild("Map")
-                and Workspace.Map:FindFirstChild("HideNSeek")
-                and Workspace.Map.HideNSeek:FindFirstChild("Pickups")
+        local pickups = Workspace:FindFirstChild("Map")
+            and Workspace.Map:FindFirstChild("HideNSeek")
+            and Workspace.Map.HideNSeek:FindFirstChild("Pickups")
 
-            if not pickups then return end
+        if not pickups then return end
 
-            for _, obj in ipairs(pickups:GetDescendants()) do
-                if obj:IsA("Model") or obj:IsA("BasePart") then
-                    createDropsESP(obj)
+        for _, obj in ipairs(pickups:GetChildren()) do
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                createPickupsESP(obj)
+            end
+        end
+
+        pickupConn = pickups.ChildAdded:Connect(function(obj)
+            if pickupsESPEnabled then createPickupsESP(obj) end
+        end)
+
+        pickupUpdateConn = RunService.Heartbeat:Connect(function()
+            if not pickupsESPEnabled then return end
+            if tick() - pickupLastUpdate < 0.2 then return end
+            pickupLastUpdate = tick()
+
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            for obj, data in pairs(pickupObjects) do
+                if obj and obj.Parent and data.Part and data.Part.Parent and data.TextLabel then
+                    local dist = math.floor((hrp.Position - data.Part.Position).Magnitude)
+                    data.TextLabel.Text = string.format("%s [%dm]", obj.Name, dist)
+                else
+                    if data.Highlight then data.Highlight:Destroy() end
+                    if data.Billboard then data.Billboard:Destroy() end
+                    pickupObjects[obj] = nil
                 end
             end
-
-            dropsAddConn = pickups.DescendantAdded:Connect(function(obj)
-                if dropsESPEnabled then createDropsESP(obj) end
-            end)
-
-            dropsUpdateConn = RunService.Heartbeat:Connect(function()
-                if not dropsESPEnabled then return end
-                if tick() - lastUpdate < 0.2 then return end
-                lastUpdate = tick()
-                
-                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-                
-                for obj, data in pairs(dropsObjects) do
-                    if obj and obj.Parent and data.Part and data.Part.Parent and data.TextLabel then
-                        local dist = math.floor((hrp.Position - data.Part.Position).Magnitude)
-                        data.TextLabel.Text = string.format("%s [%dm]", obj.Name, dist)
-                    else
-                        if data.Highlight then data.Highlight:Destroy() end
-                        if data.Billboard then data.Billboard:Destroy() end
-                        dropsObjects[obj] = nil
-                    end
-                end
-            end)
         end)
     end
 })
+
+local PlayerGameMingle = PlayerGame:CreateSubTab({ Title = "Mingle", Icon = "users", Default = false })
+
+local autoMingleEnabled = false
+local mingleConn = nil
+
+PlayerGameMingle:Toggle({
+    Title = "Auto Enter Room", 
+    Description = "Auto enter room when it needed one.", 
+    Default = false,
+    Callback = function(state)
+        autoMingleEnabled = state
+        if mingleConn then mingleConn:Disconnect() mingleConn = nil end
+        if not autoMingleEnabled then return end
+
+        mingleConn = RunService.Heartbeat:Connect(function()
+            if not autoMingleEnabled then return end
+            if not workspace:GetAttribute("MINGLE_ONGOING") then return end
+
+            local lp = LocalPlayer
+            local targetCount = workspace:GetAttribute("MINGLE_TARGET") or 0
+            
+            local myRoom = lp:GetAttribute("MINGLE_ROOM")
+            local myCount = lp:GetAttribute("MINGLE_ROOM_COUNT") or 0
+            if myRoom and myCount >= targetCount then return end
+
+            local map = workspace:FindFirstChild("Map")
+            local mingleMap = map and map:FindFirstChild("Mingle")
+            local roomsFolder = mingleMap and mingleMap:FindFirstChild("Map") and mingleMap.Map:FindFirstChild("Rooms")
+
+            if roomsFolder then
+                for _, room in ipairs(roomsFolder:GetChildren()) do
+                    local roomName = room.Name
+                    local roomPlayers = 0
+                    
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr:GetAttribute("MINGLE_ROOM") == roomName then
+                            roomPlayers = roomPlayers + 1
+                        end
+                    end
+
+                    local neededCount = targetCount - roomPlayers
+                    
+                    if neededCount == 1 and roomName ~= myRoom then
+                        -- Hanapin ang Floor (loob ng room), hindi ang Door (labas)
+                        local floor = room:FindFirstChild("Floor") 
+                            or room:FindFirstChild("Center") 
+                            or room:FindFirstChild("TeleportPart")
+                        
+                        -- Kung wala, kunin ang unang BasePart na "hindi" door/prompt
+                        if not floor then
+                            for _, part in ipairs(room:GetDescendants()) do
+                                if part:IsA("BasePart") 
+                                    and not part.Name:lower():find("door") 
+                                    and not part.Name:lower():find("prompt") 
+                                    and not part:FindFirstChildWhichIsA("ProximityPrompt") 
+                                then
+                                    floor = part
+                                    break
+                                end
+                            end
+                        end
+
+                        if floor then
+                            local char = lp.Character
+                            if char and char:FindFirstChild("HumanoidRootPart") then
+                                local hrp = char.HumanoidRootPart
+                                
+                                -- 1. Noclip
+                                for _, p in ipairs(char:GetDescendants()) do
+                                    if p:IsA("BasePart") then p.CanCollide = false end
+                                end
+                                
+                                -- 2. Teleport inside (Floor center)
+                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyAngularVelocity = Vector3.zero
+                                hrp.CFrame = floor.CFrame + Vector3.new(0, 3, 0)
+                                
+                                task.wait(0.2)
+                                
+                                -- 3. Fire Prompt (kahit malayo sa door, mag-fifire pa rin)
+                                local doorPrompt = room:FindFirstChildWhichIsA("ProximityPrompt", true)
+                                if doorPrompt and doorPrompt.Enabled then
+                                    pcall(function()
+                                        fireproximityprompt(doorPrompt)
+                                    end)
+                                end
+                                
+                                task.wait(0.1)
+                                
+                                -- 4. Restore Collision
+                                for _, p in ipairs(char:GetDescendants()) do
+                                    if p:IsA("BasePart") then p.CanCollide = true end
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end)
+    end
+})
+
 
 local PlayerGameJumpRope = PlayerGame:CreateSubTab({ Title = "Jump Rope", Icon = "activity", Default = false })
 
@@ -2189,6 +2368,51 @@ PlayerGameJumpRope:Toggle({
     end
 })
 
+local PlayerGameTUG = PlayerGame:CreateSubTab({ 
+    Title = "Tug of War", 
+    Icon = "flag", 
+    Default = false 
+})
+
+PlayerGameTUG:Toggle({
+    Title = "Auto Pull", 
+    Default = false,
+    Callback = function(state)
+        if state then
+            local lp = game:GetService("Players").LocalPlayer
+            local rs = game:GetService("ReplicatedStorage")
+            local hm = hookmetamethod or hookmetamethod_game
+            
+            -- Hook to ensure 'ChangeState' is always true
+            local old_namecall
+            old_namecall = hm("__namecall", function(self, ...)
+                local args = {...}
+                if getnamecallmethod() == "FireServer" and self:IsA("RemoteEvent") then
+                    if args[1] == "ChangeState" or args[1] == "Pull" or args[1] == "TugPull" then
+                        args[2] = true
+                    end
+                end
+                return old_namecall(self, unpack(args))
+            end)
+
+            task.spawn(function()
+                while state do
+                    local tugName = lp:GetAttribute("TUG_PULL_START") or lp:GetAttribute("TUG_START")
+                    if tugName then
+                        local remote = rs:FindFirstChild(tugName)
+                        if remote then
+                            pcall(function()
+                                remote:FireServer("StartTug")
+                                remote:FireServer("ChangeState", true)
+                            end)
+                        end
+                    end
+                    task.wait(0.05)
+                end
+            end)
+        end
+    end
+})
 
 local PlayerGameMinusOne = PlayerGame:CreateSubTab({ Title = "Minus One", Icon = "minus", Default = false })
 
@@ -2351,88 +2575,125 @@ PlayerGameGlass:Toggle({
 
 local PlayerGameSquidGame = PlayerGame:CreateSubTab({Title = "Squid Game", Icon = "shield", Default = false})
 
-local antiRagdollEnabled = false
-local ragdollConn = nil
-local charAddedConn = nil
-
-local function cleanRagdoll(char)
-    if not char then return end
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    
-    if humanoid then
-        humanoid.WalkSpeed = 16
-        humanoid.AutoRotate = true
-        if humanoid:GetState() ~= Enum.HumanoidStateType.GettingUp then
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-    end
-    
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if root then
-        root.CanCollide = true
-    end
-    local head = char:FindFirstChild("Head")
-    if head then
-        head.CanCollide = false
-    end
-
-    -- Destroy any Ragdoll Constraints
-    for _, descendant in ipairs(char:GetDescendants()) do
-        if descendant.Name == "RagdollConstraint" 
-        or descendant.Name == "RagdollNoCollide" 
-        or descendant:IsA("BallSocketConstraint") 
-        or descendant:IsA("NoCollisionConstraint") then
-            descendant:Destroy()
-        end
-    end
-end
+local antiPushEnabled = false
+local antiPushConn = nil
 
 PlayerGameSquidGame:Toggle({
     Title = "Anti Push", 
     Default = false,
     Callback = function(state)
-        antiRagdollEnabled = state
+        antiPushEnabled = state
         
-        if ragdollConn then ragdollConn:Disconnect() ragdollConn = nil end
-        if charAddedConn then charAddedConn:Disconnect() charAddedConn = nil end
+        if antiPushConn then antiPushConn:Disconnect() antiPushConn = nil end
+        if not antiPushEnabled then return end
 
-        if not antiRagdollEnabled then return end
+        local rs = game:GetService("ReplicatedStorage")
+        local movementRemote = rs:FindFirstChild("Remotes") 
+            and rs.Remotes:FindFirstChild("PlayerMovementClientSide")
+            
+        if not movementRemote then return end
 
-        -- Clean immediately
-        cleanRagdoll(LocalPlayer.Character)
-
-        -- Clean on respawn
-        charAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
-            task.wait(1)
-            if antiRagdollEnabled then cleanRagdoll(char) end
+        -- 1. I-disable agad ang ragdoll sa simula
+        pcall(function()
+            firesignal(movementRemote.OnClientEvent, "disableRagdoll", LocalPlayer.Character)
         end)
 
-        -- Listen to any changes in the character (if they somehow add ragdoll)
-        local char = LocalPlayer.Character
-        if char then
-            ragdollConn = char.DescendantAdded:Connect(function(descendant)
-                if not antiRagdollEnabled then return end
-                if descendant.Name == "RagdollConstraint" or descendant:IsA("BallSocketConstraint") then
-                    task.spawn(function()
-                        task.wait(0.05) -- small delay to let the server register
-                        cleanRagdoll(char)
-                    end)
-                end
-            end)
-        end
+        -- 2. Bantayan ang character para kapag may nag-trigger ng ragdoll, i-disable agad
+        antiPushConn = RunService.Heartbeat:Connect(function()
+            if not antiPushEnabled then return end
+            
+            local char = LocalPlayer.Character
+            if not char then return end
+            
+            -- Check if the humanoid is in ragdoll state
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum:GetState() == Enum.HumanoidStateType.Physics then
+                pcall(function()
+                    firesignal(movementRemote.OnClientEvent, "disableRagdoll", char)
+                end)
+            end
+        end)
+    end
+})
 
-        -- Intercept the remote
-        local requestRagdoll = game:GetService("ReplicatedStorage"):FindFirstChild("SkySquid")
-            and game:GetService("ReplicatedStorage").SkySquid:FindFirstChild("Remotes")
-            and game:GetService("ReplicatedStorage").SkySquid.Remotes:FindFirstChild("RequestRagdoll")
+local PlayerGameSquidSky = PlayerGame:CreateSubTab({ Title = "Main", Icon = "shield", Default = true })
 
-        if requestRagdoll then
-            requestRagdoll.OnClientEvent:Connect(function()
-                if not antiRagdollEnabled then return end
-                local char = LocalPlayer.Character
-                cleanRagdoll(char)
-            end)
-        end
+local antiPushEnabled = false
+local antiPushConn = nil
+
+PlayerGameSquidSky:Toggle({
+    Title = "Anti Push", 
+    Default = false,
+    Callback = function(state)
+        antiPushEnabled = state
+        
+        if antiPushConn then antiPushConn:Disconnect() antiPushConn = nil end
+        if not antiPushEnabled then return end
+
+        local rs = game:GetService("ReplicatedStorage")
+        local movementRemote = rs:FindFirstChild("Remotes") 
+            and rs.Remotes:FindFirstChild("PlayerMovementClientSide")
+            
+        if not movementRemote then return end
+
+        -- 1. I-disable agad ang ragdoll sa simula
+        pcall(function()
+            firesignal(movementRemote.OnClientEvent, "disableRagdoll", LocalPlayer.Character)
+        end)
+
+        -- 2. Bantayan ang character para kapag may nag-trigger ng ragdoll, i-disable agad
+        antiPushConn = RunService.Heartbeat:Connect(function()
+            if not antiPushEnabled then return end
+            
+            local char = LocalPlayer.Character
+            if not char then return end
+            
+            -- Check if the humanoid is in ragdoll state
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and hum:GetState() == Enum.HumanoidStateType.Physics then
+                pcall(function()
+                    firesignal(movementRemote.OnClientEvent, "disableRagdoll", char)
+                end)
+            end
+        end)
+    end
+})
+
+local antiFallEnabled = false
+local antiFallConn = nil
+local antiFallPlatform = nil
+
+PlayerGameSquidSky:Toggle({
+    Title = "Anti-Fall Platform",
+    Default = false,
+    Callback = function(state)
+        antiFallEnabled = state
+        
+        if antiFallConn then antiFallConn:Disconnect() antiFallConn = nil end
+        if antiFallPlatform then antiFallPlatform:Destroy() antiFallPlatform = nil end
+        
+        if not antiFallEnabled then return end
+
+        -- Gumawa ng invisible na platform
+        antiFallPlatform = Instance.new("Part")
+        antiFallPlatform.Name = "KazeAntiFallPlatform"
+        antiFallPlatform.Size = Vector3.new(12, 1, 12)
+        antiFallPlatform.Transparency = 1
+        antiFallPlatform.Anchored = true
+        antiFallPlatform.CanCollide = true
+        antiFallPlatform.Parent = Workspace
+
+        antiFallConn = RunService.Heartbeat:Connect(function()
+            if not antiFallEnabled then return end
+            
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if hrp and antiFallPlatform then
+                -- Ilagay ang platform sa ilalim mo
+                antiFallPlatform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+            end
+        end)
     end
 })
 
@@ -3057,3 +3318,4 @@ GuardKitchen:Toggle({
         end)
     end
 })
+
