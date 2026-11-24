@@ -1217,52 +1217,6 @@ end)
 local PlayerGame = Window:CreateTab({ Title = "Player GamePlay", Icon = "play" })
 local PlayerGameRLGL = PlayerGame:CreateSubTab({ Title = "RL & GL", Icon = "siren", Default = true })
 
-PlayerGameRLGL:Button({
-    Title = "Instant Win (RLGL)",
-    Callback = function()
-        task.spawn(function()
-            local rs = game:GetService("ReplicatedStorage")
-            local remoteEvents = rs:FindFirstChild("RemoteEvents")
-            
-            if not remoteEvents then return end
-
-            -- Hanapin ang lahat ng RemoteEvent na may "Replica" o "Set" sa pangalan
-            local replicaRemote = nil
-            for _, remote in ipairs(remoteEvents:GetDescendants()) do
-                if remote:IsA("RemoteEvent") then
-                    local name = string.lower(remote.Name)
-                    if name:find("replica") or name:find("set") or name:find("data") or name:find("profile") then
-                        replicaRemote = remote
-                        break
-                    end
-                end
-            end
-
-            if replicaRemote then
-                -- Try to fire with the replica path
-                pcall(function()
-                    -- Method 1: Path-based (kung ganito ang format)
-                    replicaRemote:FireServer(68, {"CompletedMaps", "RedLightGreenLight", "count"}, 149)
-                    
-                    -- Method 2: Direct key
-                    replicaRemote:FireServer("CompletedMaps_RedLightGreenLight", 149)
-                    
-                    -- Method 3: Set attribute
-                    replicaRemote:FireServer("Set", "CompletedMaps", "RedLightGreenLight", 149)
-                end)
-            end
-
-            -- Fallback: Local spoof para makita sa UI mo
-            pcall(function()
-                local Event = rs:FindFirstChild("RemoteEvents") and rs.RemoteEvents:FindFirstChild("ReplicaSet")
-                if Event and firesignal then
-                    firesignal(Event.OnClientEvent, 68, {"CompletedMaps", "RedLightGreenLight", "count"}, 149)
-                end
-            end)
-        end)
-    end
-})
-
 local autoPlayEnabled = false
 local rlglConnection = nil
 
@@ -2616,7 +2570,7 @@ PlayerGameSquidGame:Toggle({
     end
 })
 
-local PlayerGameSquidSky = PlayerGame:CreateSubTab({ Title = "Main", Icon = "shield", Default = true })
+local PlayerGameSquidSky = PlayerGame:CreateSubTab({ Title = "Main", Icon = "shield", Default = false })
 
 local antiPushEnabled = false
 local antiPushConn = nil
