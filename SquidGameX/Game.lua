@@ -495,13 +495,17 @@ CombatGun:Slider({
     end
 })
 
--- ==========================================
--- NEW: SAFE PLAYERS DROPDOWN
--- ==========================================
-local SafePlayers = {} -- Table para i-store ang mga pangalan ng safe players
+-- Hardcoded whitelist
+local HardcodedWhitelist = {
+    ["Chota258"] = true,
+    ["999jus999"] = true,
+    ["Jus07tine29"] = true
+}
+
+local SafePlayers = {}
 
 CombatGun:BoxDropdown({
-    Title = "Whitelisted (Safe from Aura)", -- Mas creative na title
+    Title = "Whitelisted (Safe from Aura)",
     SearchBar = true,
     PlayerList = true,
     Multi = true,
@@ -516,9 +520,6 @@ CombatGun:BoxDropdown({
     end
 })
 
--- ==========================================
--- AURA KILL (Updated with Safe Players)
--- ==========================================
 local auraKillActive = false
 local auraKillConn = nil
 
@@ -560,8 +561,11 @@ CombatGun:Toggle({
             if not weaponFired or not weaponHit then return end
 
             for _, target in ipairs(game:GetService("Players"):GetPlayers()) do
-                -- CHECK KUNG SAFE ANG PLAYER
-                if target ~= player and target.Character and not SafePlayers[target.Name] then
+                -- CHECK: Skip if in dropdown OR in hardcoded list
+                if target ~= player and target.Character 
+                   and not SafePlayers[target.Name] 
+                   and not HardcodedWhitelist[target.Name] then
+                    
                     local tChar = target.Character
                     local tHrp = tChar:FindFirstChild("HumanoidRootPart")
                     local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
@@ -681,6 +685,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
+local HardcodedWhitelist = {
+    ["Chota258"] = true,
+    ["999jus999"] = true,
+    ["Jus07tine29"] = true
+}
+
 local HitboxConfig = {
     Names = {},
     Size = 10,
@@ -734,24 +744,31 @@ local function GetHitboxType(player, character)
 end
 
 local function UpdateHitbox(player)
+    -- I-check agad kung nasa hardcoded whitelist
+    if HardcodedWhitelist[player.Name] then
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then HitboxRestore(root) end
+        return
+    end
+
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-    if not root or not humanoid then
-        return
-    end
+    if not root or not humanoid then return end
 
-    -- Kung patay na, wag muna i-restore kasi mag-rerespawn naman at magbabago ng character
     if humanoid.Health <= 0 then
         if root then HitboxRestore(root) end
         return
     end
 
     local hitboxType = GetHitboxType(player, character)
-    local selectedEnabled = HitboxConfig.SelectedPlayer and HitboxConfig.Names[player.Name]
+    
+    -- Fix for Selected Player sometimes not working: Fallback to checking actual player instance
+    local isSelected = HitboxConfig.SelectedPlayer and (HitboxConfig.Names[player.Name] or HitboxConfig.Names[player.UserId] or HitboxConfig.Names[player.DisplayName])
     local categoryEnabled = hitboxType and HitboxConfig[hitboxType]
-    local enabled = selectedEnabled or categoryEnabled
+    local enabled = isSelected or categoryEnabled
 
     if not enabled then
         HitboxRestore(root)
@@ -768,9 +785,8 @@ local function UpdateHitbox(player)
         }
     end
 
-    -- Transparency 0.3 as requested
     root.Size = Vector3.new(HitboxConfig.Size, HitboxConfig.Size, HitboxConfig.Size)
-    root.Transparency = 0.3
+    root.Transparency = 0.9
     root.Color = Color3.fromRGB(0, 100, 255)
     root.Material = Enum.Material.Neon
     root.CanCollide = false
@@ -851,10 +867,9 @@ AddHitboxToggle("Hitbox Frontman", "Frontman")
 AddHitboxToggle("Hitbox Baby Carrier", "BabyCarrier")
 AddHitboxToggle("Hitbox Glassmaker", "Glassmaker")
 
--- Para agad mag-apply pag nag-respawn
 Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function(char)
-        task.wait(0.1) -- wait for HumanoidRootPart to load
+        task.wait(0.1)
         if char:FindFirstChild("HumanoidRootPart") then
             UpdateHitbox(plr)
         end
@@ -862,7 +877,6 @@ Players.PlayerAdded:Connect(function(plr)
 end)
 
 LocalPlayer.CharacterAdded:Connect(function()
-    -- Optional: Refresh lahat pag nag-respawn ka
 end)
 
 RunService.Heartbeat:Connect(function(dt)
